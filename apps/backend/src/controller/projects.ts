@@ -11,10 +11,8 @@ export interface InitializeProjectArgs {
   devScript?: string
   processName?: string
   workDir?: string
-  env?: {
-    OPENAI_API_KEY?: string
-    XAI_API_KEY?: string
-  }
+  previewPort?: number
+  env?: Record<string, string>
 }
 
 export interface ResumeProjectArgs {
@@ -23,10 +21,8 @@ export interface ResumeProjectArgs {
   devScript?: string
   processName?: string
   workDir?: string
-  env?: {
-    OPENAI_API_KEY?: string
-    XAI_API_KEY?: string
-  }
+  previewPort?: number
+  env?: Record<string, string>
 }
 
 function logStep(step: string, details?: string) {
@@ -105,9 +101,10 @@ export async function initializeProject(
   }
 
   // Build env vars
-  const envVars: Record<string, string> = {}
-  if (args.env?.OPENAI_API_KEY) envVars.OPENAI_API_KEY = args.env.OPENAI_API_KEY
-  if (args.env?.XAI_API_KEY) envVars.XAI_API_KEY = args.env.XAI_API_KEY
+  const envVars: Record<string, string> = { ...args.env }
+
+  const port = args.previewPort || 3000
+  envVars.PORT = port.toString()
 
   // Start dev server if script provided
   if (args.devScript && args.processName) {
@@ -119,7 +116,7 @@ export async function initializeProject(
   await ensurePm2Process(sbx, workDir, 'agent-opencode-server', 'opencode serve --hostname 0.0.0.0 --port 4096', envVars)
   logStep('AGENT_STARTED')
 
-  const host = sbx.getHost(3000)
+  const host = sbx.getHost(port)
   const agentHost = sbx.getHost(4096)
   const previewUrl = `https://${host}`
   const agentUrl = `https://${agentHost}`
@@ -139,9 +136,10 @@ export async function resumeProject(
   const workDir = args.workDir || '/workspace'
 
   // Build env vars
-  const envVars: Record<string, string> = {}
-  if (args.env?.OPENAI_API_KEY) envVars.OPENAI_API_KEY = args.env.OPENAI_API_KEY
-  if (args.env?.XAI_API_KEY) envVars.XAI_API_KEY = args.env.XAI_API_KEY
+  const envVars: Record<string, string> = { ...args.env }
+
+  const port = args.previewPort || 3000
+  envVars.PORT = port.toString()
 
   // Restart dev server if script provided
   if (args.devScript && args.processName) {
@@ -155,7 +153,7 @@ export async function resumeProject(
   await ensurePm2Process(sbx, workDir, 'agent-opencode-server', 'opencode serve --hostname 0.0.0.0 --port 4096', envVars)
   logStep('AGENT_READY')
 
-  const host = sbx.getHost(3000)
+  const host = sbx.getHost(port)
   const agentHost = sbx.getHost(4096)
   const previewUrl = `https://${host}`
   const agentUrl = `https://${agentHost}`
