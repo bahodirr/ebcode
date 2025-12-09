@@ -21,10 +21,6 @@ const TEMPLATES = [
     name: "Vite/React Worker",
     url: "https://github.com/bahodirr/worker-vite-react-simple-template",
   },
-  {
-    name: "HTML/Tailwind",
-    url: "https://github.com/thepranaygupta/html-tailwind-css-starter-pack",
-  },
 ];
 
 export default function Home() {
