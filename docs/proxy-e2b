@@ -1,0 +1,30 @@
+# E2B port previews and proxying
+
+This project exposes sandbox services in two places:
+- The Fragments Next.js app uses the `@e2b/code-interpreter` Sandbox API to spin up per-request sandboxes for artifacts and web UIs.
+- The backend (Hono) runs longer-lived project sandboxes and an OpenCode agent inside a Daytona-managed sandbox.
+
+## Creating preview URLs (Fragments)
+- The API route `fragments/app/api/sandbox/route.ts` creates a sandbox with `Sandbox.create(...)`, writes the generated files, and for web stacks returns `https://${sbx.getHost(fragment.port || 80)}`. `getHost(port)` is the E2B helper that exposes the given container port on an e2b-managed preview hostname.
+- Web templates declare a start command and tell E2B which port to wait for via `setStartCmd(..., waitForPort(<port>))`. `waitForPort` uses `curl`, so templates install it (see the Streamlit/Gradio templates). Example: the Next.js template runs `npx next --turbo` and waits on port 3000.
+- When publishing a preview (`fragments/app/actions/publish.ts`), the URL is validated to end with `.e2b.app` and `Sandbox.setTimeout` is used to set the sandbox TTL; an optional short link is created via Vercel KV.
+
+## Creating preview URLs (backend projects)
+- `getOrCreateSandbox` in `apps/backend/src/controller/projects.ts` resumes or creates a Daytona sandbox, then calls `sandbox.getHost(port)` to obtain a preview URL for the app port (currently 3000). The preview URL is persisted on the project and injected into env vars such as `VITE_APP_URL` and `SANDBOX_PREVIEW_URL` when provisioning Convex.
+- When resuming, the same `getHost` call refreshes the preview URL so the UI can reconnect without recreating the sandbox.
+
+## Proxying endpoints to a sandbox port
+- The backend route `/api/agent/:id/*` proxies requests to the OpenCode agent running on port 4096 inside the project sandbox. It fetches a signed preview URL and token via `api.getPortPreviewUrl(sandbox.id, 4096)`, rewrites the path/query onto that host, and forwards the request with `x-daytona-preview-token` plus `x-daytona-skip-preview-warning` headers (stripping the incoming `host`). If the upstream preview is unavailable, a 502 is returned.
+
+## How to add a new preview/proxy
+1) In the template, expose your service with `setStartCmd("<command>", waitForPort(<port>))` and ensure `curl` is installed so the wait probe works.
+2) Start the sandbox and run your process (Fragments does this on each `/api/sandbox` request; the backend uses PM2 for long-lived services).
+3) Call `sandbox.getHost(<port>)` (E2B or Daytona sandbox) to obtain the preview hostname; prepend `https://` when returning to clients. If you need gated access, use the Daytona API `getPortPreviewUrl` to receive a short-lived URL + preview token.
+4) To proxy through the backend, mirror the agent route pattern: copy incoming headers/body, append the path after your API prefix to the preview URL, set the preview token headers, drop `host`, and forward with `fetch`.
+
+## Notes and gotchas
+- Port numbers must stay consistent between the template’s `waitForPort` call, the template metadata in `fragments/lib/templates.ts`, and any `getHost`/`getPortPreviewUrl` usage.
+- `waitForPort` blocks until the HTTP port responds, avoiding races where `getHost` is returned before the server is ready.
+- The sandbox TTL defaults to 10 minutes for Fragments sandboxes; publishing extends it via `Sandbox.setTimeout`.
+- The agent proxy assumes the OpenCode server is started by PM2 on port 4096 inside the sandbox (`opencode serve --hostname 0.0.0.0 --port 4096`).
+
