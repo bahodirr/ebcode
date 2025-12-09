@@ -16,13 +16,25 @@ import { useCreateProject, useProjectsQuery } from "@/app/queries/projects";
 import { cn } from "@/lib/utils";
 import { ProjectCard } from "@/components/project-card";
 
+const TEMPLATES = [
+  {
+    name: "Vite/React Worker",
+    url: "https://github.com/bahodirr/worker-vite-react-simple-template",
+  },
+  {
+    name: "HTML/Tailwind",
+    url: "https://github.com/thepranaygupta/html-tailwind-css-starter-pack",
+  },
+];
+
 export default function Home() {
   const router = useRouter();
-  const [githubUrl, setGithubUrl] = useState("");
+  const [githubUrl, setGithubUrl] = useState("https://github.com/bahodirr/worker-vite-react-simple-template");
   const [initScript, setInitScript] = useState("bun install");
   const [devScript, setDevScript] = useState("bun run dev");
   const [openaiKey, setOpenaiKey] = useState("");
   const [xaiKey, setXaiKey] = useState("");
+  const [envVars, setEnvVars] = useState("");
 
   const { mutateAsync: createProject, isPending } = useCreateProject();
   const { data: projects = [] } = useProjectsQuery();
@@ -30,16 +42,29 @@ export default function Home() {
   const handleStart = async () => {
     if (!githubUrl) return;
 
+    const parsedEnv: Record<string, string> = {};
+    
+    // Parse manual env vars
+    if (envVars) {
+        envVars.split('\n').forEach(line => {
+            const [key, ...values] = line.split('=');
+            if (key && values.length > 0) {
+                parsedEnv[key.trim()] = values.join('=').trim();
+            }
+        });
+    }
+
+    // Add API keys if present
+    if (openaiKey) parsedEnv.OPENAI_API_KEY = openaiKey;
+    if (xaiKey) parsedEnv.XAI_API_KEY = xaiKey;
+
     try {
       const data = await createProject({
         githubUrl,
         initScript,
         devScript,
         processName: "dev-server",
-        env: {
-          OPENAI_API_KEY: openaiKey || undefined,
-          XAI_API_KEY: xaiKey || undefined,
-        },
+        env: parsedEnv,
       });
 
       router.push(`/project?projectId=${data.id}&sandboxId=${data.sandboxId}`);
@@ -64,20 +89,35 @@ export default function Home() {
 
         {/* Main Input Section */}
         <div className="space-y-6">
-            <div className="relative group/input">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center justify-center text-zinc-400 dark:text-zinc-600">
-                    <Github className="h-5 w-5" />
+            <div className="space-y-3">
+                <div className="relative group/input">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center justify-center text-zinc-400 dark:text-zinc-600">
+                        <Github className="h-5 w-5" />
+                    </div>
+                    <Input
+                        id="github-url"
+                        placeholder="github.com/username/project"
+                        value={githubUrl}
+                        onChange={(e) => setGithubUrl(e.target.value)}
+                        className="h-16 rounded-2xl border-0 bg-white pl-12 pr-12 text-lg font-mono text-zinc-900 shadow-[0_0_40px_-10px_rgba(0,0,0,0.05)] ring-1 ring-zinc-200 transition-all placeholder:text-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-900 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800 dark:placeholder:text-zinc-700 dark:focus-visible:ring-zinc-100"
+                    />
+                     <div className="absolute right-5 top-1/2 -translate-y-1/2 hidden items-center gap-1 rounded bg-zinc-100 px-2 py-1 text-[10px] font-medium text-zinc-400 sm:flex dark:bg-zinc-800">
+                        <Command className="h-3 w-3" />
+                        <span>K</span>
+                    </div>
                 </div>
-                <Input
-                    id="github-url"
-                    placeholder="github.com/username/project"
-                    value={githubUrl}
-                    onChange={(e) => setGithubUrl(e.target.value)}
-                    className="h-16 rounded-2xl border-0 bg-white pl-12 pr-12 text-lg font-mono text-zinc-900 shadow-[0_0_40px_-10px_rgba(0,0,0,0.05)] ring-1 ring-zinc-200 transition-all placeholder:text-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-900 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800 dark:placeholder:text-zinc-700 dark:focus-visible:ring-zinc-100"
-                />
-                 <div className="absolute right-5 top-1/2 -translate-y-1/2 hidden items-center gap-1 rounded bg-zinc-100 px-2 py-1 text-[10px] font-medium text-zinc-400 sm:flex dark:bg-zinc-800">
-                    <Command className="h-3 w-3" />
-                    <span>K</span>
+                
+                <div className="flex flex-wrap items-center gap-2 px-1">
+                    <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-400">Templates:</span>
+                    {TEMPLATES.map((t) => (
+                         <button
+                            key={t.url}
+                            onClick={() => setGithubUrl(t.url)}
+                            className="rounded-full bg-zinc-100 px-3 py-1 text-[10px] font-medium text-zinc-600 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                        >
+                            {t.name}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -87,32 +127,38 @@ export default function Home() {
                          <span className="font-mono uppercase tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">Configure Environment</span>
                     </AccordionTrigger>
                     <AccordionContent className="pt-4">
-                        <div className="rounded-xl border border-zinc-200 bg-white/50 p-4 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/50">
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="init-script" className="flex items-center gap-2 text-[10px] font-mono font-medium uppercase tracking-widest text-zinc-400">
-                                        <Terminal className="h-3 w-3" /> Init
-                                    </Label>
-                                    <Input
-                                        id="init-script"
-                                        value={initScript}
-                                        onChange={(e) => setInitScript(e.target.value)}
-                                        className="h-9 font-mono text-xs bg-transparent border-zinc-200 focus-visible:border-zinc-400 focus-visible:ring-0 dark:border-zinc-800 dark:focus-visible:border-zinc-600"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="dev-script" className="flex items-center gap-2 text-[10px] font-mono font-medium uppercase tracking-widest text-zinc-400">
-                                        <Play className="h-3 w-3" /> Dev
-                                    </Label>
-                                    <Input
-                                        id="dev-script"
-                                        value={devScript}
-                                        onChange={(e) => setDevScript(e.target.value)}
-                                        className="h-9 font-mono text-xs bg-transparent border-zinc-200 focus-visible:border-zinc-400 focus-visible:ring-0 dark:border-zinc-800 dark:focus-visible:border-zinc-600"
-                                    />
+                        <div className="space-y-4">
+                            {/* Scripts */}
+                            <div className="rounded-xl border border-zinc-200 bg-white/50 p-4 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/50">
+                                <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-400 mb-3">Scripts</p>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="init-script" className="flex items-center gap-2 text-[10px] font-mono font-medium uppercase tracking-widest text-zinc-400">
+                                            <Terminal className="h-3 w-3" /> Init
+                                        </Label>
+                                        <Input
+                                            id="init-script"
+                                            value={initScript}
+                                            onChange={(e) => setInitScript(e.target.value)}
+                                            className="h-9 font-mono text-xs bg-transparent border-zinc-200 focus-visible:border-zinc-400 focus-visible:ring-0 dark:border-zinc-800 dark:focus-visible:border-zinc-600"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="dev-script" className="flex items-center gap-2 text-[10px] font-mono font-medium uppercase tracking-widest text-zinc-400">
+                                            <Play className="h-3 w-3" /> Dev
+                                        </Label>
+                                        <Input
+                                            id="dev-script"
+                                            value={devScript}
+                                            onChange={(e) => setDevScript(e.target.value)}
+                                            className="h-9 font-mono text-xs bg-transparent border-zinc-200 focus-visible:border-zinc-400 focus-visible:ring-0 dark:border-zinc-800 dark:focus-visible:border-zinc-600"
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                            <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+
+                            {/* API Keys */}
+                            <div className="rounded-xl border border-zinc-200 bg-white/50 p-4 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/50">
                                 <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-400 mb-3">API Keys</p>
                                 <div className="grid gap-4 md:grid-cols-2">
                                     <div className="space-y-1.5">
@@ -142,6 +188,19 @@ export default function Home() {
                                         />
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Custom Environment Variables */}
+                            <div className="rounded-xl border border-zinc-200 bg-white/50 p-4 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/50">
+                                <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-400 mb-3">Custom Variables <span className="normal-case opacity-60">· one per line</span></p>
+                                <textarea
+                                    id="env-vars"
+                                    value={envVars}
+                                    onChange={(e) => setEnvVars(e.target.value)}
+                                    placeholder="MY_VAR=value"
+                                    rows={2}
+                                    className="w-full rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-xs font-mono placeholder:text-zinc-300 focus-visible:outline-none focus-visible:border-zinc-400 dark:border-zinc-800 dark:placeholder:text-zinc-600 dark:focus-visible:border-zinc-600 resize-y"
+                                />
                             </div>
                         </div>
                     </AccordionContent>

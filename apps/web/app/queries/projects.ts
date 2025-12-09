@@ -56,10 +56,7 @@ interface CreateProjectArgs {
   initScript?: string
   devScript?: string
   processName?: string
-  env?: {
-    OPENAI_API_KEY?: string
-    XAI_API_KEY?: string
-  }
+  env?: Record<string, string | undefined>
 }
 
 export function useCreateProject() {
@@ -111,10 +108,7 @@ export function useResumeProject() {
       sandboxId: string
       devScript?: string
       processName?: string
-      env?: {
-        OPENAI_API_KEY?: string
-        XAI_API_KEY?: string
-      }
+      env?: Record<string, string | undefined>
     }) => {
       const res = await http.post(`api/projects/${projectId}/${sandboxId}/resume`, {
         json: {

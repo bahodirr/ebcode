@@ -3,31 +3,41 @@
 import { useSearchParams } from "next/navigation";
 import { useProjectQuery, useResumeProject } from "@/app/queries/projects";
 import { useSendMessage, useSession } from "@/app/queries/chats";
-import { useState, useRef, useEffect } from "react";
-import { RefreshCw, Play, Minimize2, Maximize2 } from "lucide-react";
+import { useState, useRef, useEffect, Suspense } from "react";
+import { RefreshCw, Play, Minimize2, Maximize2, Loader2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import useAgentStream from "@/lib/use-agent-stream";
 import { AgentThread } from "@/components/agent/agent-thread";
 import ChatInput from "@/components/agent/chat-input";
 import type { FilePart } from "@/lib/upload";
 
-export default function ProjectPage() {
+const checkPreviewStatus = async (url: string) => {
+  const res = await fetch(`/api/proxy-status?url=${encodeURIComponent(url)}`);
+  const data = await res.json();
+  return data.status >= 200 && data.status < 300;
+};
+
+function ProjectContent() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
   const [iframeKey, setIframeKey] = useState(0);
   const [isThreadExpanded, setIsThreadExpanded] = useState(false);
   const [mode, setMode] = useState<"plan" | "build">("plan");
   const threadContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (isThreadExpanded && threadContainerRef.current) {
-      threadContainerRef.current.scrollTop = threadContainerRef.current.scrollHeight;
-    }
-  }, [isThreadExpanded]);
+  const queryClient = useQueryClient();
 
   const { data: project, isLoading } = useProjectQuery(projectId ?? undefined);
   const { data: session } = useSession(project?.id, project?.sandboxId);
   const { mutate: resume, isPending: isResuming } = useResumeProject();
   const { mutate: sendMessage, isPending: isSending } = useSendMessage();
+
+  const { data: isPreviewReady = false } = useQuery({
+    queryKey: ["preview-status", project?.previewUrl],
+    queryFn: () => checkPreviewStatus(project!.previewUrl),
+    enabled: !!project?.previewUrl,
+    refetchInterval: (query) => (query.state.data ? false : 1000),
+    staleTime: Infinity,
+  });
 
   const sessionId = session?.id;
   const { messages, parts: partsMap } = useAgentStream({
@@ -35,6 +45,12 @@ export default function ProjectPage() {
     projectId: project?.id,
     sandboxId: project?.sandboxId,
   });
+
+  useEffect(() => {
+    if (isThreadExpanded && threadContainerRef.current) {
+      threadContainerRef.current.scrollTop = threadContainerRef.current.scrollHeight;
+    }
+  }, [isThreadExpanded]);
 
   const handleSubmit = (text: string, files?: FilePart[], model?: string, providerID?: string) => {
     if (!text.trim() && !files?.length) return;
@@ -54,6 +70,7 @@ export default function ProjectPage() {
 
   const handleWakeUp = () => {
     if (!project) return;
+    queryClient.setQueryData(["preview-status", project.previewUrl], false);
     resume(
       { projectId: project.id, sandboxId: project.sandboxId, devScript: project.devScript, processName: "dev-server" },
       { onSuccess: () => setIframeKey(k => k + 1) },
@@ -96,12 +113,19 @@ export default function ProjectPage() {
         </button>
       </div>
 
-      <iframe
-        key={iframeKey}
-        src={project.previewUrl}
-        className="h-full w-full border-0 bg-white"
-        title="Project Preview"
-      />
+      {isPreviewReady ? (
+        <iframe
+          key={iframeKey}
+          src={project.previewUrl}
+          className="h-full w-full border-0 bg-white"
+          title="Project Preview"
+        />
+      ) : (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-white dark:bg-zinc-950">
+          <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+          <p className="text-sm text-zinc-500">Starting application...</p>
+        </div>
+      )}
 
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 transform z-20 w-full max-w-2xl px-4 flex flex-col items-center">
         {/* Agent Thread - narrower, above input */}
@@ -134,5 +158,17 @@ export default function ProjectPage() {
         />
       </div>
     </div>
+  );
+}
+
+export default function ProjectPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center bg-white dark:bg-zinc-950">
+        <p className="text-zinc-500">Loading...</p>
+      </div>
+    }>
+      <ProjectContent />
+    </Suspense>
   );
 }
