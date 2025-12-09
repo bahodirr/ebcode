@@ -167,17 +167,28 @@ export function AgentThread({ messages, partsMap, onRevert, revertMessageId, rev
   onToggleCompact?: () => void;
 }) {
   const [openThoughts, setOpenThoughts] = useState<Record<string, boolean>>({});
-  const wasWorkingRef = useRef(false);
+  const pendingCompletionRef = useRef<string | null>(null);
 
   const visible = revertMessageId ? messages.filter(m => m.id < revertMessageId) : messages;
-  
-  // Check if agent is currently working
-  const lastMsg = visible[visible.length - 1];
-  const isWorking = lastMsg?.role === "assistant" && !lastMsg.time?.completed;
+  const lastAssistantMsg = visible.filter(m => m.role === "assistant").pop();
 
-  // Play sound when agent finishes
+  // Play sound and auto-collapse only when tracked message completes
   useEffect(() => {
-    if (wasWorkingRef.current && !isWorking && lastMsg?.role === "assistant") {
+    if (!lastAssistantMsg) {
+      pendingCompletionRef.current = null;
+      return;
+    }
+
+    // Still working - track this message
+    if (!lastAssistantMsg.time?.completed) {
+      pendingCompletionRef.current = lastAssistantMsg.id;
+      return;
+    }
+
+    // Completed - only act if we were waiting for this specific message
+    if (pendingCompletionRef.current === lastAssistantMsg.id) {
+      pendingCompletionRef.current = null;
+
       try {
         const ctx = new AudioContext();
         const osc = ctx.createOscillator();
@@ -186,14 +197,17 @@ export function AgentThread({ messages, partsMap, onRevert, revertMessageId, rev
         gain.connect(ctx.destination);
         osc.frequency.setValueAtTime(660, ctx.currentTime);
         osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
-        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 0.3);
       } catch {}
+
+      if (!compact && onToggleCompact) {
+        onToggleCompact();
+      }
     }
-    wasWorkingRef.current = isWorking;
-  }, [isWorking, lastMsg?.role]);
+  }, [lastAssistantMsg?.id, lastAssistantMsg?.time?.completed, compact, onToggleCompact]);
 
   const userMessages = visible.filter(m => m.role === "user");
 
