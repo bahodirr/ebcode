@@ -75,7 +75,7 @@ export default function useAgentStream({ sessionId, projectId, sandboxId }: Prop
     if (!api || !sessionId) return;
     const controller = new AbortController();
 
-    fetch(`${api.fullUrl}/session/${sessionId}/message`, { credentials: "include", signal: controller.signal })
+    fetch(`${api.fullUrl}/session/${sessionId}/message`, { signal: controller.signal })
       .then(r => r.ok ? r.json() : null)
       .then((items: Array<{ info: Message; parts: Part[] }> | null) => {
         items?.forEach(({ info, parts }) => {
@@ -96,7 +96,7 @@ export default function useAgentStream({ sessionId, projectId, sandboxId }: Prop
     const connect = () => {
       if (closedRef.current) return;
       esRef.current?.close();
-      const es = new EventSource(`${api.fullUrl}/event`, { withCredentials: true });
+      const es = new EventSource(`${api.fullUrl}/event`);
       esRef.current = es;
       es.onmessage = e => { try { dispatch(JSON.parse(e.data)); } catch {} };
       es.onerror = () => {
